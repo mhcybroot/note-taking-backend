@@ -28,15 +28,23 @@ export class BootstrapService implements OnApplicationBootstrap {
 
     const existingAdmin = await this.usersRepository.findByEmail(adminEmail);
     if (!existingAdmin) {
-      const hashedPassword = await bcrypt.hash(adminPassword, 10);
-      await this.usersRepository.create({
-        email: adminEmail.toLowerCase().trim(),
-        password: hashedPassword,
-        name: 'System Administrator',
-        role: 'admin',
-        interests: ['system', 'administration', 'security'],
-      });
-      this.logger.log(`Default administrator seeded successfully: ${adminEmail}`);
+      try {
+        const hashedPassword = await bcrypt.hash(adminPassword, 10);
+        await this.usersRepository.create({
+          email: adminEmail.toLowerCase().trim(),
+          password: hashedPassword,
+          name: 'System Administrator',
+          role: 'admin',
+          interests: ['system', 'administration', 'security'],
+        });
+        this.logger.log(`Default administrator seeded successfully: ${adminEmail}`);
+      } catch (err: any) {
+        if (err.code === 11000) {
+          this.logger.log(`Administrator concurrently created: ${adminEmail}`);
+        } else {
+          throw err;
+        }
+      }
     } else {
       this.logger.log(`Administrator already present: ${adminEmail}`);
     }
