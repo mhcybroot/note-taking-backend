@@ -1,7 +1,7 @@
 version: '3.8'
 
 services:
-  frontend:
+  note_taking_frontend:
     build:
       context: https://github.com/mhcybroot/note-taking-frontend.git#main
       dockerfile: Dockerfile
@@ -45,7 +45,9 @@ services:
       mongodb:
         condition: service_healthy
     networks:
-      - notetaking_net
+      notetaking_net:
+        aliases:
+          - backend
 
   mongodb:
     image: mongo:7
