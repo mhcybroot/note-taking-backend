@@ -1,0 +1,293 @@
+### ==============================================================================
+### SECURE NOTE-TAKING APPLICATION REST API TEST WORKBOOK
+### Compatible with: VS Code REST Client extension, JetBrains HTTP Client, or curl
+### ==============================================================================
+
+@baseUrl = http://localhost:3000/api/v1
+@contentType = application/json
+
+### ------------------------------------------------------------------------------
+### 1. AUTHENTICATION & ROLE-BASED ACCESS CONTROL (RBAC)
+### ------------------------------------------------------------------------------
+
+### 1.1 Login as Default Administrator (Seeded automatically from .env)
+# @name adminLogin
+POST {{baseUrl}}/auth/login
+Content-Type: {{contentType}}
+
+{
+  "email": "admin@notetaking.local",
+  "password": "AdminSecurePassword123!"
+}
+
+### Capture Admin Token
+@adminToken = {{adminLogin.response.body.data.access_token}}
+
+### 1.2 Privilege Escalation Defense: Attempt to self-register as Admin
+# EXPECTED: 400 Bad Request (forbidNonWhitelisted rejects "role" field)
+POST {{baseUrl}}/auth/register
+Content-Type: {{contentType}}
+
+{
+  "email": "attacker@example.com",
+  "password": "AttackerPass123!",
+  "name": "Malicious User",
+  "role": "admin",
+  "interests": ["hacking"]
+}
+
+### 1.3 Register Regular User A
+# @name registerUserA
+POST {{baseUrl}}/auth/register
+Content-Type: {{contentType}}
+
+{
+  "email": "alice@example.com",
+  "password": "AlicePassword123!",
+  "name": "Alice Developer",
+  "interests": ["chess", "reading", "backend"]
+}
+
+### 1.4 Register Regular User B
+# @name registerUserB
+POST {{baseUrl}}/auth/register
+Content-Type: {{contentType}}
+
+{
+  "email": "bob@example.com",
+  "password": "BobPassword123!",
+  "name": "Bob Designer",
+  "interests": ["chess", "art", "music"]
+}
+
+### 1.5 Login as User A
+# @name loginUserA
+POST {{baseUrl}}/auth/login
+Content-Type: {{contentType}}
+
+{
+  "email": "alice@example.com",
+  "password": "AlicePassword123!"
+}
+
+### Capture User A Variables
+@userAToken = {{loginUserA.response.body.data.access_token}}
+@userAId = {{loginUserA.response.body.data.user.id}}
+
+### 1.6 Login as User B
+# @name loginUserB
+POST {{baseUrl}}/auth/login
+Content-Type: {{contentType}}
+
+{
+  "email": "bob@example.com",
+  "password": "BobPassword123!"
+}
+
+### Capture User B Variables
+@userBToken = {{loginUserB.response.body.data.access_token}}
+@userBId = {{loginUserB.response.body.data.user.id}}
+
+### 1.7 Get Current User Profile (User A)
+GET {{baseUrl}}/auth/profile
+Authorization: Bearer {{userAToken}}
+
+
+### ------------------------------------------------------------------------------
+### 2. USERS MANAGEMENT & SCENARIO 1 AGGREGATION
+### ------------------------------------------------------------------------------
+
+### 2.1 Scenario 1 Aggregation: Group Users by Interests
+# PDF Constraint: Executed in exactly one collection.aggregate() call
+# Supported by: UserSchema.index({ interests: 1 }) multikey index
+# EXPECTED: Returns interest buckets (e.g. "chess" with both Alice and Bob)
+GET {{baseUrl}}/users/by-interests
+Authorization: Bearer {{userAToken}}
+
+### 2.2 Admin List All Users (Paginated)
+# PDF Requirement: Admin can list all users. Supported by createdAt_-1 index.
+GET {{baseUrl}}/users?page=1&limit=10&sortBy=createdAt&sortOrder=desc
+Authorization: Bearer {{adminToken}}
+
+### 2.3 Regular User Forbidden from Listing Users
+# EXPECTED: 403 Forbidden
+GET {{baseUrl}}/users
+Authorization: Bearer {{userAToken}}
+
+### 2.4 Admin: Create User with Explicit Role
+# PDF Requirement: Admin can add users
+POST {{baseUrl}}/users
+Authorization: Bearer {{adminToken}}
+Content-Type: {{contentType}}
+
+{
+  "email": "moderator@notetaking.local",
+  "password": "ModPassword123!",
+  "name": "Moderator Jane",
+  "role": "admin",
+  "interests": ["moderation", "security"]
+}
+
+### 2.5 User A: Update Self Profile (Interests)
+PATCH {{baseUrl}}/users/me
+Authorization: Bearer {{userAToken}}
+Content-Type: {{contentType}}
+
+{
+  "name": "Alice Senior Engineer",
+  "interests": ["chess", "reading", "distributed-systems"]
+}
+
+
+### ------------------------------------------------------------------------------
+### 3. NOTES MODULE & STRICT OWNERSHIP ENFORCEMENT
+### ------------------------------------------------------------------------------
+
+### 3.1 User A: Create Note A1
+# @name createNoteA1
+POST {{baseUrl}}/notes
+Authorization: Bearer {{userAToken}}
+Content-Type: {{contentType}}
+
+{
+  "title": "Alice Confidential Note 1",
+  "content": "Secret system architecture notes."
+}
+
+### Capture Note A1 ID
+@noteA1Id = {{createNoteA1.response.body.data.id}}
+
+### 3.2 User A: Create Note A2
+POST {{baseUrl}}/notes
+Authorization: Bearer {{userAToken}}
+Content-Type: {{contentType}}
+
+{
+  "title": "Alice Project Roadmap",
+  "content": "Q4 backend delivery timeline."
+}
+
+### 3.3 User B: Create Note B1
+POST {{baseUrl}}/notes
+Authorization: Bearer {{userBToken}}
+Content-Type: {{contentType}}
+
+{
+  "title": "Bob UI Guidelines",
+  "content": "Design system color tokens and typography."
+}
+
+### 3.4 User A: List Own Notes (Paginated)
+# Supported by compound index: NoteSchema.index({ owner: 1, createdAt: -1 })
+# EXPECTED: Returns ONLY Alice's notes (Note A1, Note A2)
+GET {{baseUrl}}/notes?page=1&limit=10
+Authorization: Bearer {{userAToken}}
+
+### 3.5 User B attempts to VIEW User A's Note
+# EXPECTED: 403 Forbidden
+GET {{baseUrl}}/notes/{{noteA1Id}}
+Authorization: Bearer {{userBToken}}
+
+### 3.6 User B attempts to EDIT User A's Note
+# EXPECTED: 403 Forbidden
+PATCH {{baseUrl}}/notes/{{noteA1Id}}
+Authorization: Bearer {{userBToken}}
+Content-Type: {{contentType}}
+
+{
+  "title": "Tampered Title by User B"
+}
+
+### 3.7 User B attempts to DELETE User A's Note
+# EXPECTED: 403 Forbidden
+DELETE {{baseUrl}}/notes/{{noteA1Id}}
+Authorization: Bearer {{userBToken}}
+
+### 3.8 Admin: View User A's Note
+# PDF Requirement: Admin "Can view everyone's notes"
+# EXPECTED: 200 OK
+GET {{baseUrl}}/notes/{{noteA1Id}}
+Authorization: Bearer {{adminToken}}
+
+### 3.9 Admin: Attempt to MODIFY User A's Note
+# PDF Requirement: Admin can VIEW everyone's notes, but note edits strictly enforce ownership
+# EXPECTED: 403 Forbidden
+PATCH {{baseUrl}}/notes/{{noteA1Id}}
+Authorization: Bearer {{adminToken}}
+Content-Type: {{contentType}}
+
+{
+  "title": "Admin Override Attempt"
+}
+
+### 3.10 Admin: List All Notes Across All Users (Paginated)
+# PDF Requirement: Admin can view everyone's notes. Supported by createdAt_-1 index.
+GET {{baseUrl}}/notes?page=1&limit=10
+Authorization: Bearer {{adminToken}}
+
+### 3.11 User A: Successfully Update Own Note
+# EXPECTED: 200 OK
+PATCH {{baseUrl}}/notes/{{noteA1Id}}
+Authorization: Bearer {{userAToken}}
+Content-Type: {{contentType}}
+
+{
+  "title": "Alice Updated Confidential Note 1",
+  "content": "Updated system design documentation."
+}
+
+### 3.12 User A: Successfully Delete Own Note
+# EXPECTED: 200 OK
+DELETE {{baseUrl}}/notes/{{noteA1Id}}
+Authorization: Bearer {{userAToken}}
+
+
+### ------------------------------------------------------------------------------
+### 4. POSTS MODULE & SCENARIO 2 AGGREGATION ($lookup)
+### ------------------------------------------------------------------------------
+
+### 4.1 User A: Create Post 1
+POST {{baseUrl}}/posts
+Authorization: Bearer {{userAToken}}
+Content-Type: {{contentType}}
+
+{
+  "title": "MongoDB Indexing Strategies in Production",
+  "content": "Why ESR (Equality, Sort, Range) rule eliminates in-memory sorts."
+}
+
+### 4.2 User A: Create Post 2
+POST {{baseUrl}}/posts
+Authorization: Bearer {{userAToken}}
+Content-Type: {{contentType}}
+
+{
+  "title": "Clean Layered Architecture with NestJS",
+  "content": "Separating DTOs, ViewModels, and Mongoose repositories."
+}
+
+### 4.3 Public Feed: List All Posts (Paginated)
+# Open to all callers. Supported by PostSchema.index({ createdAt: -1 })
+GET {{baseUrl}}/posts?page=1&limit=10
+
+### 4.4 Scenario 2 Aggregation: Retrieve All Posts Belongs to User A ($lookup)
+# PDF Constraint: Single aggregation pipeline with a $lookup stage
+# Supported by: PostSchema.index({ author: 1, createdAt: -1 })
+# EXPECTED: Returns Alice's posts with author details populated via $lookup
+GET {{baseUrl}}/posts/user/{{userAId}}
+
+
+### ------------------------------------------------------------------------------
+### 5. QUERY VALIDATION & PERFORMANCE OPTIMIZATIONS
+### ------------------------------------------------------------------------------
+
+### 5.1 Invalid ObjectId in Note Filter
+# EXPECTED: 400 Bad Request ("owner must be a valid MongoDB ObjectId")
+GET {{baseUrl}}/notes?owner=invalid-non-object-id
+Authorization: Bearer {{adminToken}}
+
+### 5.2 Disallowed Unindexed Sort Field
+# PDF Constraint: Strict indexing efficiency; arbitrary in-memory sorts forbidden
+# EXPECTED: 400 Bad Request ("sortBy must be an indexed field (createdAt)")
+GET {{baseUrl}}/notes?sortBy=content
+Authorization: Bearer {{userAToken}}
