@@ -13,9 +13,11 @@ describe('UsersRepository - Scenario 1 Aggregation', () => {
 
     expect(mockAggregate).toHaveBeenCalledTimes(1);
     const pipeline = mockAggregate.mock.calls[0][0];
-    expect(pipeline[0]).toEqual({ $match: { 'interests.0': { $exists: true } } });
+    // Must match directly on interests to leverage multikey index (IXSCAN)
+    expect(pipeline[0]).toEqual({ $match: { interests: { $exists: true, $ne: [] } } });
     expect(pipeline[1]).toEqual({ $unwind: '$interests' });
     expect(pipeline[2]).toHaveProperty('$group');
+    expect(pipeline[2].$group.users).toHaveProperty('$addToSet');
     expect(pipeline[3]).toHaveProperty('$sort');
     expect(pipeline[4]).toHaveProperty('$project');
     expect(result).toHaveLength(1);

@@ -85,7 +85,8 @@ export class PostsRepository {
         { $unwind: '$author' },
         {
           $project: {
-            _id: 1,
+            _id: 0,
+            id: '$_id',
             title: 1,
             content: 1,
             author: 1,

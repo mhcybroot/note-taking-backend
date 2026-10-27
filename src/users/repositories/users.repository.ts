@@ -69,14 +69,15 @@ export class UsersRepository {
   async groupByInterests(): Promise<any[]> {
     return this.userModel
       .aggregate([
-        { $match: { 'interests.0': { $exists: true } } },
+        // Multikey index supported match on interests
+        { $match: { interests: { $exists: true, $ne: [] } } },
         { $unwind: '$interests' },
         {
           $group: {
             _id: '$interests',
             count: { $sum: 1 },
             users: {
-              $push: {
+              $addToSet: {
                 id: '$_id',
                 name: '$name',
                 email: '$email',
