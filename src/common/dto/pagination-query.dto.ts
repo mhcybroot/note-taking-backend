@@ -16,7 +16,7 @@ export class PaginationQueryDto {
   limit: number = 10;
 
   @IsOptional()
-  @IsString()
+  @IsIn(['createdAt'], { message: 'sortBy must be an indexed field (createdAt)' })
   sortBy?: string = 'createdAt';
 
   @IsOptional()
