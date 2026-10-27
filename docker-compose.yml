@@ -8,9 +8,10 @@ services:
     container_name: note_taking_frontend
     restart: unless-stopped
     ports:
-      - "9996:80"
+      - "9996:9996"
     expose:
       - "80"
+      - "9996"
     depends_on:
       - backend
     networks:
@@ -22,7 +23,7 @@ services:
       - "traefik.http.routers.notetaking-frontend.entrypoints=websecure"
       - "traefik.http.routers.notetaking-frontend.tls=true"
       - "traefik.http.routers.notetaking-frontend.tls.certresolver=letsencrypt"
-      - "traefik.http.services.notetaking-frontend.loadbalancer.server.port=80"
+      - "traefik.http.services.notetaking-frontend.loadbalancer.server.port=9996"
 
   backend:
     build:
