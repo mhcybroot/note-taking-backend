@@ -15,7 +15,10 @@ services:
     depends_on:
       - backend
     networks:
-      - dokploy-network
+      dokploy-network:
+        aliases:
+          - frontend
+          - note_taking_frontend
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.notetaking-frontend.rule=Host(`notes.mahmudulhasan.info.bd`)"
@@ -35,7 +38,7 @@ services:
     environment:
       - PORT=3000
       - NODE_ENV=production
-      - MONGODB_URI=mongodb://mongodb:27017/note_taking_db
+      - MONGODB_URI=mongodb://note_taking_mongodb:27017/note_taking_db
       - JWT_SECRET=${JWT_SECRET:-super_secret_jwt_key_production_2026_note_taking}
       - JWT_EXPIRES_IN=1d
       - ADMIN_EMAIL=${ADMIN_EMAIL:-admin@notetaking.local}
@@ -44,7 +47,10 @@ services:
       mongodb:
         condition: service_healthy
     networks:
-      - dokploy-network
+      dokploy-network:
+        aliases:
+          - backend
+          - note_taking_backend
 
   mongodb:
     image: mongo:7
@@ -59,7 +65,10 @@ services:
       retries: 5
       start_period: 10s
     networks:
-      - dokploy-network
+      dokploy-network:
+        aliases:
+          - mongodb
+          - note_taking_mongodb
 
 volumes:
   mongo_data:
