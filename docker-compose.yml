@@ -7,6 +7,8 @@ services:
       dockerfile: Dockerfile
     container_name: note_taking_frontend
     restart: unless-stopped
+    ports:
+      - "9996:80"
     expose:
       - "80"
     depends_on:
